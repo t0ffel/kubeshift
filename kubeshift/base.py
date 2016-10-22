@@ -176,11 +176,15 @@ class _ClientBase(object):
         status_code = None
         return_data = None
 
+        logger.debug("Request: {0}".format(self._to_curl(method, url, headers)))
+        logger.debug("Request body: {0}".format(data))
         try:
             res = self.session.request(method, url, headers=headers, json=data)
             status_code = res.status_code
+            logger.debug("Response headers: {0}".format(res.headers))
             if res.ok and res.text:
                 return_data = res.json()
+            logger.debug("Response data: {0}".format(res.json()))
         except requests.exceptions.SSLError:
             raise KubeConnectionError('SSL/TLS ERROR: invalid certificate')
         except requests.exceptions.ConnectTimeout:
@@ -198,6 +202,11 @@ class _ClientBase(object):
                                    % (status_code, res.reason))
         return return_data
 
+    def _to_curl(self, method, url, headers):
+        if headers:
+            hdr_array = [ '-H "'+ k + ': ' + v + '"' for k,v in headers.iteritems()]
+            return "curl -k -v -X%s %s %s" % (method.upper(), ' '.join(hdr_array), url)
+        return "curl -k -v -X%s %s" % (method.upper(), url)
 
 class KubeBase(_ClientBase, KubeQueryMixin):
     """Provide common base for each provider.
