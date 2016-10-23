@@ -11,7 +11,8 @@ import yaml
 from kubeshift.config import Config
 from kubeshift.constants import (DEFAULT_NAMESPACE,
                                  LOGGER_DEFAULT)
-from kubeshift.exceptions import KubeConnectionError, KubeRequestError, KubeShiftError
+from kubeshift.exceptions import (KubeConnectionError, KubeRequestError,
+                                  KubeShiftError)
 from kubeshift.queries.kube_query import KubeQueryMixin
 from kubeshift import validator
 
@@ -45,7 +46,8 @@ class _ClientBase(object):
         self.kubeconfig = config
 
         # Check the API url
-        self.base_url = self.kubeconfig.cluster.get('server', 'http://localhost:8080')
+        self.base_url = self.kubeconfig.cluster.get('server',
+                                                    'http://localhost:8080')
         validator.check_url(self.base_url)
 
         # Initialize the connection using all the .kube/config credentials
@@ -90,7 +92,8 @@ class _ClientBase(object):
             ep = res['name']
             if res['namespaced']:
                 ep = 'namespaces/{namespace}/' + ep
-            self.api_resources[version][res['kind']] = _format_url(base_url, ep)
+            self.api_resources[version][res['kind']] = _format_url(base_url,
+                                                                   ep)
 
     def _load_resources(self, resource_path, version):
         # Gather what end-points we will be using
@@ -113,7 +116,8 @@ class _ClientBase(object):
         """
         Initialize the required requests session.
 
-        Sets certs / token / authentication in order to communicate with the API.
+        Sets certs / token / authentication in order to communicate with the
+        API.
         """
         connection = requests.Session()
 
@@ -136,7 +140,8 @@ class _ClientBase(object):
 
         return connection
 
-    def _generate_url(self, api_version, kind, namespace=None, name=None, params=None):
+    def _generate_url(self, api_version, kind, namespace=None, name=None,
+                      params=None):
         """
         Generate the required URL using API resources.
 
@@ -152,7 +157,8 @@ class _ClientBase(object):
         """
         url = self.api_resources.get(api_version, {}).get(kind)
         if not url:
-            raise KubeShiftError('No API matching version={} kind={}'.format(api_version, kind))
+            raise KubeShiftError(
+                'No API matching version={} kind={}'.format(api_version, kind))
 
         url = url.replace('{namespace}', namespace or '')
 
@@ -170,21 +176,23 @@ class _ClientBase(object):
 
         :param str method: put/get/post/patch
         :param str url: url of the api call
-        :param dict data: object of the data that is being passed (will be converted to json)
+        :param dict data: object of the data that is being passed
+        (will be converted to json)
         :param dict headers: request header
         """
         status_code = None
         return_data = None
 
-        logger.debug("Request: {0}".format(self._to_curl(method, url, headers)))
+        logger.debug("Request: {0}".format(self._to_curl(method, url,
+                                                         headers)))
         logger.debug("Request body: {0}".format(data))
         try:
             res = self.session.request(method, url, headers=headers, json=data)
             status_code = res.status_code
             logger.debug("Response headers: {0}".format(res.headers))
-            if res.ok and res.text:
-                return_data = res.json()
-            logger.debug("Response data: {0}".format(res.json()))
+            # if res.ok and res.text:
+            return_data = res.json()
+            logger.debug("Response data: {0}".format(return_data))
         except requests.exceptions.SSLError:
             raise KubeConnectionError('SSL/TLS ERROR: invalid certificate')
         except requests.exceptions.ConnectTimeout:
@@ -196,17 +204,23 @@ class _ClientBase(object):
 
         # 200 = OK
         # 201 = PENDING
+        # 409 = Already Exists
         # EVERYTHING ELSE == FAIL
-        if status_code is not 200 and status_code is not 201:
-            raise KubeRequestError('Unable to complete request: Status: %s, Error: %s'
-                                   % (status_code, res.reason))
+        if status_code == 409:
+            return return_data
+        elif status_code is not 200 and status_code is not 201:
+            raise KubeRequestError('Error from server: %s'
+                                   % (return_data['message']))
         return return_data
 
-    def _to_curl(self, method, url, headers):
-        if headers:
-            hdr_array = [ '-H "'+ k + ': ' + v + '"' for k,v in headers.iteritems()]
-            return "curl -k -v -X%s %s %s" % (method.upper(), ' '.join(hdr_array), url)
+    def _to_curl(self, method, url, hdrs):
+        if hdrs:
+            hdr_arr = ['-H "' + k + ': ' + v +
+                       '"' for k, v in hdrs.iteritems()]
+            return "curl -k -v -X%s %s %s" % (method.upper(),
+                                              ' '.join(hdr_arr), url)
         return "curl -k -v -X%s %s" % (method.upper(), url)
+
 
 class KubeBase(_ClientBase, KubeQueryMixin):
     """Provide common base for each provider.
@@ -237,7 +251,7 @@ class KubeBase(_ClientBase, KubeQueryMixin):
 
         resp = self.request('post', url, data=obj)
 
-        logger.info('%s `%s` successfully created', kind.capitalize(), name)
+#        logger.info('%s `%s` successfully created', kind.capitalize(), name)
 
         return resp
 

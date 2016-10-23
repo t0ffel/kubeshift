@@ -64,3 +64,40 @@ class OpenshiftClient(KubeBase, ShiftQueryMixin):
         logger.debug('Processed template with %d objects successfully',
                      len(data.get('objects', [])))
         return data
+
+    def create_or_update(self, obj):
+        """Create or update an object from the Kubernetes cluster."""
+        resp = super(OpenshiftClient, self).create(obj)
+        logger.debug("resp in create is {0}".format(resp))
+
+        if resp['code'] == 409:
+            resp = self._update(obj)
+
+        return resp
+
+    def _update(self, obj):
+        """Check the difference and object in the Kubernetes cluster."""
+        apiver, kind, name = validator.validate(obj)
+        namespace = validator.check_namespace(obj, None)
+        url = self._generate_url(apiver, kind, namespace)
+        query_name = kind.lower() + 's'
+        query = getattr(self, query_name)()
+        server_obj = query.by_name(name)
+        patch = validator.form_patch(obj, server_obj)
+#        import pdb; pdb.set_trace()
+
+#        resp = self.request('get', url, data=obj)
+        if patch == {}:
+            logger.info("The `{0}` named `{1}` already exists".format(kind, name))
+            resp = {
+            'resource': server_obj,
+            'changed': False
+            }
+#        logger.debug("resp in create is {0}".format(resp))
+        else:
+            resp = {
+            'resource': self.modify(patch),
+            'changed': False
+            }
+
+        return resp
