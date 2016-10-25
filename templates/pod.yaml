@@ -7,3 +7,5 @@ spec:
   containers:
   - image: nginx
     name: "hellonginx"
+  - image: nginx
+    name: "lolo"

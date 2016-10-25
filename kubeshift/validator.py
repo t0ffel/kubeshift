@@ -52,12 +52,12 @@ def is_valid_ns(ns):
     return valid
 
 
-def check_namespace(obj, default):
+def check_namespace(obj, namespace=None):
     """Get namespace from obj and validate."""
     ns = obj.get('metadata', {}).get('namespace')
     if is_valid_ns(ns):
         return ns
-    return default
+    return namespace
 
 def metadata_patch(local_metadata, server_metadata):
     """Validates that annotations, labels are the same"""
@@ -71,28 +71,33 @@ def metadata_patch(local_metadata, server_metadata):
     return res
 
 
-def eq_elem_in_list(elem, list):
+def eq_elem_in_list(elem, target_list):
     """Element is in the target list
     return False if no equivalient element exists in target list"""
-    found = False
-    for le in list:
-        if 'name' not in le:
-            raise Exception('Name of the element is missing!')
-        if elem['name'] == le['name']:
-            if simple_compare(elem, le):
-                return False
-            found = True
-    return found
+    for mele in target_list:
+#        if 'name' not in le:
+#            raise Exception('Name of the element is missing!')
+        if not simple_compare(elem, mele):
+            return True
+    return False
 
 def list_compare(list1, list2):
     """Compare lists to have same elements.
+    If the list doesn't contain dicts - consider ordinary comparison.
     Elements are the same if they have the same name.
     """
     if len(list1) != len(list2):
         return list1
+    if len(list1) == 0:
+        return None
+
+    if not isinstance(list1[0], dict):
+        if set(list1) == set(list2):
+            return None
+        else:
+            return list1
+
     for el in list1:
-        if 'name' not in el:
-            raise Exception('Name of the element is missing!')
         if not eq_elem_in_list(el, list2):
             return list1
     return None
@@ -101,24 +106,18 @@ def list_compare(list1, list2):
 def simple_compare(obj1, obj2):
     if isinstance(obj1, list):
         if type(obj1) != type(obj2):
-            logger.debug('types compared: {0}, {1}'.format(type(obj1), type(obj2)))
             raise Exception
         return list_compare(obj1, obj2)
     elif isinstance(obj1, str):
-        logger.debug('types: {0}, {1}'.format(type(obj1), type(obj2)))
         if not isinstance(obj2, unicode):
-            logger.debug('object is: {0}'.format(obj2))
             raise Exception
         if obj1.encode('utf8') != obj2:
-            logger.debug('Non-equal stuff found: {0}, {1}'.format(obj1, obj2))
             return obj1
         return None
     elif not isinstance(obj1, dict):
         if type(obj1) != type(obj2):
-            logger.debug('types compared: {0}, {1}'.format(type(obj1), type(obj2)))
             raise Exception
         if obj1 != obj2:
-            logger.debug('Non-equal stuff found: {0}, {1}'.format(obj1, obj2))
             return obj1
         return None
 

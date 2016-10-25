@@ -24,7 +24,8 @@ def template(action):
         def handler(self, obj, namespace=None):
             apiver, kind, _ = validator.validate(obj)
             if kind == 'Template':
-                return self._process_template(apiver, kind, action, obj, namespace)
+                return self._process_template(apiver, kind, action, obj,
+                                              namespace)
             else:
                 return func(self, obj, namespace)
         return handler
@@ -65,39 +66,21 @@ class OpenshiftClient(KubeBase, ShiftQueryMixin):
                      len(data.get('objects', [])))
         return data
 
-    def create_or_update(self, obj):
+    def ensure_present(self, obj):
         """Create or update an object from the Kubernetes cluster."""
-        resp = super(OpenshiftClient, self).create(obj)
-        logger.debug("resp in create is {0}".format(resp))
-
-        if resp['code'] == 409:
-            resp = self._update(obj)
-
-        return resp
-
-    def _update(self, obj):
-        """Check the difference and object in the Kubernetes cluster."""
+        namespace = validator.check_namespace(obj)
         apiver, kind, name = validator.validate(obj)
-        namespace = validator.check_namespace(obj, None)
-        url = self._generate_url(apiver, kind, namespace)
-        query_name = kind.lower() + 's'
-        query = getattr(self, query_name)()
-        server_obj = query.by_name(name)
-        patch = validator.form_patch(obj, server_obj)
-#        import pdb; pdb.set_trace()
-
-#        resp = self.request('get', url, data=obj)
-        if patch == {}:
-            logger.info("The `{0}` named `{1}` already exists".format(kind, name))
-            resp = {
-            'resource': server_obj,
-            'changed': False
+        if kind != 'Namespace' and namespace:
+            ns_obj = {
+                'apiVersion': 'v1',
+                'kind': 'Namespace',
+                'metadata': {
+                    'name': namespace
+                }
             }
-#        logger.debug("resp in create is {0}".format(resp))
-        else:
-            resp = {
-            'resource': self.modify(patch),
-            'changed': False
-            }
+            super(OpenshiftClient, self).ensure_present(ns_obj)
+        return super(OpenshiftClient, self).ensure_present(obj)
 
-        return resp
+    def ensure_absent(self, obj):
+        """Ensure that an object is removed from the Openshift cluster."""
+        return super(OpenshiftClient, self).ensure_absent(obj)

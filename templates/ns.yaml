@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  annotations:
+    openshift.io/description: Initial developer project
+  name: mynewproject
+spec:
+  finalizers:
+  - openshift.io/origin
+  - kubernetes

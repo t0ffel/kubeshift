@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: RoleBinding
+metadata:
+  name: daemonset-admin
+roleRef:
+  name: daemonset-admin
+subjects:
+- kind: ServiceAccount
+  name: builder
+  namespace: logging
+userNames:
+- "system:serviceaccount:logging:builder"

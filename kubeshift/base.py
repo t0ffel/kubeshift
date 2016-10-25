@@ -206,11 +206,14 @@ class _ClientBase(object):
         # 201 = PENDING
         # 409 = Already Exists
         # EVERYTHING ELSE == FAIL
-        if status_code == 409:
+        if status_code == 409 and method == 'post':
+            return return_data
+        elif status_code == 404 and method == 'delete':
             return return_data
         elif status_code is not 200 and status_code is not 201:
-            raise KubeRequestError('Error from server: %s'
-                                   % (return_data['message']))
+            raise KubeRequestError('Error from server: %s; For request: %s'
+                                   % (return_data['message'], self._to_curl(
+                                      method, url, headers)))
         return return_data
 
     def _to_curl(self, method, url, hdrs):
@@ -290,6 +293,71 @@ class KubeBase(_ClientBase, KubeQueryMixin):
 
         return resp
 
+    def _update(self, obj):
+        """Check the difference and object in the Kubernetes cluster."""
+        apiver, kind, name = validator.validate(obj)
+        namespace = validator.check_namespace(obj)
+        query_name = kind.lower() + 's'
+        query = getattr(self, query_name)(namespace=namespace)
+        server_obj = query.by_name(name)
+        patch = validator.form_patch(obj, server_obj)
+
+        if patch == {}:
+            logger.info(
+                "{0} `{1}` matches what was requested".format(kind, name))
+            result = {
+                'response': server_obj,
+                'changed': False
+            }
+#        logger.debug("resp in create is {0}".format(resp))
+        else:
+            logger.info(
+                "Patch constructed: {0}".format(patch))
+            result = {
+                'response': self.modify(obj, patch),
+                'changed': True
+            }
+
+        return result
+
+    def ensure_present(self, obj):
+        """Create or update an object from the Kubernetes cluster."""
+        apiver, kind, name = validator.validate(obj)
+        resp = self.create(obj)
+        logger.debug("resp in create is {0}".format(resp))
+
+        if resp.get('code', None) == 409:
+            logger.info('%s `%s` Object with same name already exists', kind, name)
+            result = self._update(obj)
+        else:
+            result = {
+            'response': resp,
+            'changed': True }
+            logger.info('%s `%s` successfully created', kind, name)
+
+        return result
+
+    def ensure_absent(self, obj):
+        """Ensure that object  is absent from the Kubernetes cluster.
+
+        :param dict obj: Object of the artifact being modified
+        """
+        apiver, kind, name = validator.validate(obj)
+        namespace = validator.check_namespace(obj)
+        url = self._generate_url(apiver, kind, namespace, name)
+
+        resp = self.request('delete', url)
+
+        result = {'response': resp}
+        if resp.get('code', None) == 404:
+            result['changed'] = False
+            logger.info('%s `%s` already absent', kind, name)
+        else:
+            result['changed'] = True
+            logger.info('%s `%s` successfully deleted', kind, name)
+
+        return result
+
     def delete_by_file(self, filepath):
         """Delete resource by file.
 
@@ -322,7 +390,7 @@ class KubeBase(_ClientBase, KubeQueryMixin):
         """
         return self._by_file(filepath, self.replace)
 
-    def modify(self, partial, namespace=DEFAULT_NAMESPACE):
+    def modify(self, obj, partial, namespace=DEFAULT_NAMESPACE):
         """Modify a resource.
 
         The partial object provided will be strategically merged with the existing
@@ -332,8 +400,8 @@ class KubeBase(_ClientBase, KubeQueryMixin):
         :param dict partial: changes to be applied to existing resource content
         :param str namespace: object name and auth scope, such as for teams and projects
         """
-        apiver, kind, name = validator.validate(partial)
-        namespace = validator.check_namespace(partial, namespace)
+        apiver, kind, name = validator.validate(obj)
+        namespace = validator.check_namespace(obj)
         url = self._generate_url(apiver, kind, namespace, name)
 
         headers = {'Content-Type': 'application/strategic-merge-patch+json'}
