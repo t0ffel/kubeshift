@@ -146,7 +146,6 @@ def form_patch(local_obj, server_obj):
     serv.pop('status', None)
     loc.pop('status', None)
     metadata_diff = metadata_patch(loc.pop('metadata'), serv.pop('metadata'))
-#    import pdb; pdb.set_trace()
     if metadata_diff:
         patch = {'metadata': metadata_diff}
     else:
@@ -160,3 +159,52 @@ def form_patch(local_obj, server_obj):
             patch[key] = loc[key]
 
     return patch
+
+def merge_dict(obj1, obj2):
+    if isinstance(obj1, list):
+        if type(obj1) != type(obj2):
+            raise Exception
+        res = merge_lists(obj1, obj2)
+        return res
+    logger.debug("merge_dict didn't find stuff!")
+
+def merge_lists(list1, list2):
+
+    if not isinstance(list1[0], dict):
+        set_diff = set(list1) - set(list2)
+        res = list2 + list(set_diff)
+        if set(res) == set(list2):
+            return None
+    diff = []
+    for el in list1:
+        if el not in list2:
+            diff.append(el)
+#    import pdb; pdb.set_trace()
+#    logger.debug("merge_lists result is {0}".format(res))
+    if diff:
+        list2.extend(diff)
+        return list2
+    return None
+
+def merge_objs(server_obj, patch):
+    """Merge all the lists from patch with those in server_obj."""
+    loc = patch.copy()
+    serv = server_obj.copy()
+    serv.pop('status', None)
+    loc.pop('status', None)
+#    metadata_diff = metadata_patch(loc.pop('metadata'), serv.pop('metadata'))
+
+    if not patch:
+        return {}
+    diff = {}
+    # Deal with real dicts
+    for key in loc.keys():
+        if key in serv:
+            cur_res = merge_dict(loc[key], serv[key])
+#            import pdb; pdb.set_trace()
+            if cur_res:
+                diff[key] = cur_res
+        else:
+            diff[key] = loc[key]
+    logger.debug("merge_objs result is {0}".format(diff))
+    return diff

@@ -72,6 +72,10 @@ class KubeQueryMixin(object):
     def services(self, namespace=DEFAULT_NAMESPACE):
         """:py:class:`~kubeshift.queries.base.Query` services."""
 
+    @base.queryapi(version='v1', kind='SecurityContextConstraints')
+    def securitycontextconstraints(self, namespace=DEFAULT_NAMESPACE):
+        """:py:class:`~kubeshift.queries.base.Query` SecurityContextConstraints."""
+
     # extensions/v1beta1
 
     @base.queryapi(version='extensions/v1beta1', kind='DaemonSet')

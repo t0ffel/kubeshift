@@ -84,3 +84,8 @@ class OpenshiftClient(KubeBase, ShiftQueryMixin):
     def ensure_absent(self, obj):
         """Ensure that an object is removed from the Openshift cluster."""
         return super(OpenshiftClient, self).ensure_absent(obj)
+
+    def ensure_patched(self, obj, patch):
+        """Ensure that an object's lists are merged with those from the patch
+        from the Openshift cluster."""
+        return super(OpenshiftClient, self).ensure_patched(obj, patch)

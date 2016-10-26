@@ -442,3 +442,34 @@ class KubeBase(_ClientBase, KubeQueryMixin):
         self.request('patch', url, data=patch, headers=headers)
 
         logger.info('`%s` successfully scaled to %s', name, replicas)
+
+    def ensure_patched(self, obj, patch):
+        """Ensure that an object's lists are merged with those from the patch
+        from the Openshift cluster."""
+        apiver, kind, name = validator.validate(obj)
+        namespace = validator.check_namespace(obj)
+        if kind == 'SecurityContextConstraints':
+            query_name = kind.lower()
+        else:
+            query_name = kind.lower() + 's'
+        query = getattr(self, query_name)(namespace=namespace)
+        server_obj = query.by_name(name)
+
+        merged_patch = validator.merge_objs(server_obj, patch)
+        if merged_patch == {}:
+            logger.info(
+                "{0} `{1}` matches what was requested".format(kind, name))
+            result = {
+                'response': server_obj,
+                'changed': False
+            }
+#        logger.debug("resp in create is {0}".format(resp))
+        else:
+            logger.info(
+                "Patch constructed: {0}".format(patch))
+            result = {
+                'response': self.modify(obj, merged_patch),
+                'changed': True
+            }
+
+        return result
