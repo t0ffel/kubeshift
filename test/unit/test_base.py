@@ -151,15 +151,15 @@ class TestClientBase(unittest.TestCase):
 
     def test_request_response_error(self):
         client = KubeBase(self.config)
-        with patch.object(client.session, 'request', return_value=helper.make_response(400, None)):
+        with patch.object(client.session, 'request', return_value=helper.make_response(400, {'message':'Error'})):
             with self.assertRaises(KubeRequestError):
                 client.request('get', 'http://localhost:8080')
 
     def test_request_no_data(self):
         client = KubeBase(self.config)
-        with patch.object(client.session, 'request', return_value=helper.make_response(200, None)):
+        with patch.object(client.session, 'request', return_value=helper.make_response(200, {})):
             data = client.request('get', 'http://localhost:8080')
-            self.assertIsNone(data)
+            self.assertEqual(data, {})
 
     def test_request_patch(self):
         client = KubeBase(self.config)

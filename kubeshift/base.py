@@ -390,7 +390,7 @@ class KubeBase(_ClientBase, KubeQueryMixin):
         """
         return self._by_file(filepath, self.replace)
 
-    def modify(self, obj, partial, namespace=DEFAULT_NAMESPACE):
+    def modify(self, partial, namespace=DEFAULT_NAMESPACE):
         """Modify a resource.
 
         The partial object provided will be strategically merged with the existing
@@ -400,8 +400,20 @@ class KubeBase(_ClientBase, KubeQueryMixin):
         :param dict partial: changes to be applied to existing resource content
         :param str namespace: object name and auth scope, such as for teams and projects
         """
-        apiver, kind, name = validator.validate(obj)
-        namespace = validator.check_namespace(obj)
+        return self.full_modify(partial, partial, namespace=namespace)
+
+    def full_modify(self, obj_meta, partial, namespace=DEFAULT_NAMESPACE):
+        """Modify a resource.
+
+        The partial object provided will be strategically merged with the existing
+        resource content. The top level meta data is required to enable modifying
+        the correct resource instance.
+
+        :param dict partial: changes to be applied to existing resource content
+        :param str namespace: object name and auth scope, such as for teams and projects
+        """
+        apiver, kind, name = validator.validate(obj_meta)
+        namespace = validator.check_namespace(obj_meta)
         url = self._generate_url(apiver, kind, namespace, name)
 
         headers = {'Content-Type': 'application/strategic-merge-patch+json'}
