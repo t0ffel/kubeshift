@@ -10,6 +10,7 @@ logger = logging.getLogger(LOGGER_DEFAULT)
 def metadata_patch(local_metadata, server_metadata):
     """Generate patch of top level metadata.
 
+    There is no mode for metadata patching, it's always a regular 'replace'.
     server side v1.ObjectMeta usually contains more values - it's normal
     :param dict local_metadata: source metadata
     :param dict server_metadata: metadata from the server object
@@ -35,6 +36,7 @@ def metadata_patch(local_metadata, server_metadata):
 def eq_elem_in_list(elem, target_list):
     """Check if element is present in the target list.
 
+    TODO: If we're working with named dicts - specially handle via names.
     return False if no equivalient element exists in target list
     """
     for mele in target_list:
@@ -48,26 +50,29 @@ def patch_list(list1, list2, mode):
 
     If the list doesn't contain dicts - consider ordinary comparison.
     Elements are the same if they have the same name.
+
+    Sample use case for 'append' - add item to a list.
     """
     if mode == 'replace':
-        return list1
+        return list1[:]
     elif mode != 'append':
         raise KubePatchError('Error patching list in mode {0}'.format(mode))
-    if len(list1) != len(list2):
-        return list1
     if len(list1) == 0:
-        return None
-
+        return list2[:]
+    # Lists of non-dict elements.
     if not isinstance(list1[0], dict):
-        if set(list1) == set(list2):
-            return None
+        if sorted(list1) == sorted(list2):
+            return []
         else:
-            return list1
+            res = list(set(list1).union(set(list2)))
+            return res
+#    import pdb; pdb.set_trace()
 
+    res = list2[:]
     for el in list1:
         if not eq_elem_in_list(el, list2):
-            return list1
-    return None
+            res.append(el)
+    return res
 
 
 def patch_iteration(obj1, obj2, mode):
@@ -75,22 +80,16 @@ def patch_iteration(obj1, obj2, mode):
 
     :param obj1: destination object to achieve.
     :param obj2: existing object to be transformed.
-    :param string mode: append or replace
+    :param string mode: append or replace nested lists
     :returns: dict patch to apply. {} if the objects are equivalient.
     """
     if isinstance(obj1, list):
         if type(obj1) != type(obj2):
-            raise KubePatchError
+            raise KubePatchError('Trying to compare {0} to list'.format(obj2))
         return patch_list(obj1, obj2, mode)
-    # elif isinstance(obj1, (str, unicode)):
-    #     if not isinstance(obj2, unicode):
-    #         raise KubePatchError
-    #     if obj1.encode('utf8') != obj2:
-    #         return obj1
-    #     return None
     elif not isinstance(obj1, dict):
-        if type(obj1) != type(obj2):
-            raise KubePatchError
+        if isinstance(obj2, dict) or isinstance(obj2, list):
+            raise KubePatchError('Trying to compare {0} to value'.format(obj2))
         if obj1 != obj2:
             return obj1
         return None
@@ -99,7 +98,7 @@ def patch_iteration(obj1, obj2, mode):
         if key not in obj2:
             return obj1
         else:
-            cur_res = patch_iteration(obj1[key], obj2[key])
+            cur_res = patch_iteration(obj1[key], obj2[key], mode)
             if cur_res:
                 return obj1
     return None
@@ -125,19 +124,20 @@ def form_patch(local_obj, server_obj, mode):
     :returns: a strategic-merge-patch dict.
     """
     if mode not in {"append", "replace"}:
-        raise KubePatchError("bad, bad usage!")
+        raise KubePatchError("Unrecognized patching mode '{0}'".format(mode))
     loc = local_obj.copy()
     serv = server_obj.copy()
     serv.pop('status', None)
     loc.pop('status', None)
-    metadata_diff = metadata_patch(loc.pop('metadata'), serv.pop('metadata'))
+    metadata_diff = metadata_patch(loc.pop('metadata', {}),
+                                   serv.pop('metadata', {}))
     if metadata_diff:
         patch = {'metadata': metadata_diff}
     else:
         patch = {}
     for key in loc.keys():
         if key in serv:
-            cur_res = patch_iteration(loc[key], serv[key])
+            cur_res = patch_iteration(loc[key], serv[key], mode)
             if cur_res:
                 patch[key] = cur_res
         else:
