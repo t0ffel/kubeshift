@@ -8,3 +8,6 @@ class KubeConnectionError(Exception):
 
 class KubeRequestError(Exception):
     pass
+
+class KubePatchError(Exception):
+    pass

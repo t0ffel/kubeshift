@@ -14,6 +14,7 @@ from kubeshift.constants import (DEFAULT_NAMESPACE,
 from kubeshift.exceptions import KubeConnectionError, KubeRequestError, KubeShiftError
 from kubeshift.queries.kube_query import KubeQueryMixin
 from kubeshift import validator
+from kubeshift import comparator
 
 logger = logging.getLogger(LOGGER_DEFAULT)
 
@@ -176,11 +177,19 @@ class _ClientBase(object):
         status_code = None
         return_data = None
 
+        logger.debug("Request: {0}".format(self._to_curl(method, url,
+                                                         headers)))
+        logger.debug("Request body: {0}".format(data))
+
         try:
             res = self.session.request(method, url, headers=headers, json=data)
             status_code = res.status_code
-            if res.ok and res.text:
-                return_data = res.json()
+            logger.debug("Response headers: {0}".format(res.headers))
+            # if res.ok and res.text:
+            return_data = res.json()
+            logger.debug("Response data: {0}".format(return_data))
+        except TypeError:
+            raise KubeRequestError('No json in server response')
         except requests.exceptions.SSLError:
             raise KubeConnectionError('SSL/TLS ERROR: invalid certificate')
         except requests.exceptions.ConnectTimeout:
@@ -192,11 +201,25 @@ class _ClientBase(object):
 
         # 200 = OK
         # 201 = PENDING
+        # 409 = Already Exists
         # EVERYTHING ELSE == FAIL
-        if status_code is not 200 and status_code is not 201:
-            raise KubeRequestError('Unable to complete request: Status: %s, Error: %s'
-                                   % (status_code, res.reason))
+        if status_code == 409 and method == 'post':
+            return return_data
+        elif status_code is not 200 and status_code is not 201:
+            raise KubeRequestError('Error from server: %s; on request: %s'
+                                   % (return_data['message'], self._to_curl(
+                                       method, url, headers)))
         return return_data
+
+
+    def _to_curl(self, method, url, hdrs):
+        if hdrs:
+            hdr_arr = ['-H "' + k + ': ' + v +
+                       '"' for k, v in hdrs.iteritems()]
+            return "curl -k -v -X%s %s %s" % (method.upper(),
+                                              ' '.join(hdr_arr), url)
+        return "curl -k -v -X%s %s" % (method.upper(), url)
+
 
 
 class KubeBase(_ClientBase, KubeQueryMixin):
@@ -231,6 +254,53 @@ class KubeBase(_ClientBase, KubeQueryMixin):
         logger.info('%s `%s` successfully created', kind.capitalize(), name)
 
         return resp
+
+    def _update(self, obj):
+        """Check the difference and object in the Kubernetes cluster."""
+        apiver, kind, name = validator.validate(obj)
+        namespace = validator.check_namespace(obj, None)
+        query_name = kind.lower() + 's'
+        query = getattr(self, query_name)(namespace=namespace)
+        server_obj = query.by_name(name)
+        new_obj = self.modify(obj)
+        logger.debug('Pre-modification response is {}'.format(server_obj))
+
+        logger.debug('Post-modification response is {}'.format(new_obj))
+        diff = comparator.equal_spec(server_obj, new_obj)
+        result = {'response': new_obj}
+        if not diff:
+            logger.info(
+                "{0} `{1}` matches what was requested".format(kind, name))
+            result['changed'] = False
+        else:
+            logger.info(
+                "Patch constructed: {0}".format(diff))
+            result['changed'] = True
+
+        return result
+
+    def apply(self, obj):
+        """Create or update an object from the Kubernetes cluster."""
+        apiver, kind, name = validator.validate(obj)
+        namespace = validator.check_namespace(obj, None)
+        url = self._generate_url(apiver, kind, namespace)
+
+        resp = self.request('post', url, data=obj)
+
+        logger.debug("resp in create is {0}".format(resp))
+
+        if resp.get('code', None) == 409:
+            logger.debug('%s `%s` Object with same name already exists', kind,
+                         name)
+            result = self._update(obj)
+        else:
+            result = {
+            'response': resp,
+            'changed': True }
+            logger.info('%s `%s` successfully created', kind, name)
+
+        return result
+
 
     def create_by_file(self, filepath):
         """Create resource by file.
